@@ -1,0 +1,174 @@
+
+import random
+import time
+import csv
+import statistics
+import platform
+import sys
+from pathlib import Path
+
+SIZES = [1000, 10000, 100000, 1000000]
+REPEATS = 30
+SEED = 20261014
+
+
+# 1. Iterative Linear Search
+def linear_search(data, target):
+    comparisons = 0
+
+    for value in data:
+        comparisons += 1
+
+        if value == target:
+            return True, comparisons
+
+    return False, comparisons
+
+
+# 2. Recursive Binary Search
+# The input list must be sorted.
+def binary_search(data, target, low=0, high=None):
+    if high is None:
+        high = len(data) - 1
+
+    if low > high:
+        return False, 0
+
+    mid = (low + high) // 2
+    comparisons = 1
+
+    if data[mid] == target:
+        return True, comparisons
+
+    comparisons += 1
+
+    if target < data[mid]:
+        found, count = binary_search(
+            data, target, low, mid - 1
+        )
+    else:
+        found, count = binary_search(
+            data, target, mid + 1, high
+        )
+
+    return found, comparisons + count
+
+
+# 3. Hash Table Search
+def hash_search(index, target):
+    return target in index, 1
+
+
+# Measure execution time in milliseconds
+def timed_call(function, *args):
+    start = time.perf_counter_ns()
+    result = function(*args)
+    elapsed = (time.perf_counter_ns() - start) / 1_000_000
+    return result, elapsed
+
+
+def main():
+    rng = random.Random(SEED)
+    results = []
+
+    output_dir = Path("Task_9_Experimental_Performance")
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    for n in SIZES:
+        print(f"\nTesting {n:,} student records")
+
+        # Generate unique registration numbers
+        data = list(range(100000000, 100000000 + n))
+        rng.shuffle(data)
+
+        # Measure binary-search preprocessing
+        sorted_data, sort_time = timed_call(sorted, data)
+
+        # Measure hash-index construction
+        hash_index, hash_build_time = timed_call(
+            dict.fromkeys, data
+        )
+
+        query_rng = random.Random(SEED + n)
+        targets = [
+            data[query_rng.randrange(n)]
+            for _ in range(REPEATS)
+        ]
+
+        algorithms = [
+            "Linear Search",
+            "Recursive Binary Search",
+            "Hash Search"
+        ]
+
+        for algorithm in algorithms:
+            times = []
+            operation_counts = []
+            all_correct = True
+
+            for target in targets:
+                if algorithm == "Linear Search":
+                    (found, count), elapsed = timed_call(
+                        linear_search, data, target
+                    )
+
+                elif algorithm == "Recursive Binary Search":
+                    (found, count), elapsed = timed_call(
+                        binary_search, sorted_data, target
+                    )
+
+                else:
+                    (found, count), elapsed = timed_call(
+                        hash_search, hash_index, target
+                    )
+
+                times.append(elapsed)
+                operation_counts.append(count)
+                all_correct = all_correct and found
+
+            if algorithm == "Linear Search":
+                preprocessing = 0.0
+            elif algorithm == "Recursive Binary Search":
+                preprocessing = sort_time
+            else:
+                preprocessing = hash_build_time
+
+            mean_time = statistics.mean(times)
+            mean_operations = statistics.mean(operation_counts)
+
+            results.append({
+                "Dataset_Size": n,
+                "Algorithm": algorithm,
+                "Queries": REPEATS,
+                "Mean_Search_Time_ms": mean_time,
+                "Mean_Comparisons_or_Operations": mean_operations,
+                "Preprocessing_Time_ms": preprocessing,
+                "Correct": all_correct
+            })
+
+            print(
+                f"{algorithm:27} | "
+                f"Time: {mean_time:.6f} ms | "
+                f"Operations: {mean_operations:.1f} | "
+                f"Preprocessing: {preprocessing:.3f} ms | "
+                f"Correct: {all_correct}"
+            )
+
+    # Save results to CSV
+    csv_path = output_dir / "benchmark_results.csv"
+
+    with open(csv_path, "w", newline="", encoding="utf-8") as file:
+        writer = csv.DictWriter(
+            file, fieldnames=results[0].keys()
+        )
+        writer.writeheader()
+        writer.writerows(results)
+
+    print("\nAll experiments completed.")
+    print("Python version:", sys.version.split()[0])
+    print("Platform:", platform.platform())
+    print("Results saved to:", csv_path)
+
+
+if __name__ == "__main__":
+    main()
